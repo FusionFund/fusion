@@ -1,4 +1,3 @@
-// Find all our documentation at https://docs.near.org
 // use near_sdk::{log, near};
 use near_sdk::{env, log, near, require, AccountId, NearToken, PanicOnDefault, Promise};
 use near_sdk::json_types::U64;
@@ -6,11 +5,7 @@ use near_sdk::borsh::{self, BorshSerialize, BorshDeserialize};
 use near_sdk::store::{LookupMap, IterableMap};
 use near_sdk::BorshStorageKey;
 
-// Define the contract structure
-// #[near(contract_state)]
-// pub struct Contract {
-//     greeting: String,
-// }
+
 
 #[near]
 #[derive(BorshStorageKey)]
@@ -24,7 +19,7 @@ pub enum Prefix {
     Nested(String),
 }
 
-// Define the contract state
+
 #[near(contract_state)]
 #[derive(PanicOnDefault)]
 pub struct Contract {
@@ -51,7 +46,7 @@ pub struct LoanRequest {
     pub amount: u128,
     pub interest_rate: u8, // interest rate as a percentage
     pub duration: U64, // loan duration in seconds
-    pub fulfilled: bool, // true if a lender has fulfilled this request
+    pub fulfilled: bool,
 }
 
 
@@ -101,14 +96,7 @@ pub struct Contribution {
     pub amount: u128,
 }
 
-// Define the default, which automatically initializes the contract
-// impl Default for Contract {
-//     fn default() -> Self {
-//         Self {
-//             greeting: "Hello".to_string(),
-//         }
-//     }
-// }
+
 
 // Implement the contract structure
 #[near]
@@ -118,7 +106,7 @@ impl Contract {
     pub fn init() -> Self {
         Self {
             // campaigns: Vec::new(),
-            campaigns : IterableMap::new(Prefix::IterableMap), // Use IterableMap for campaigns
+            campaigns : IterableMap::new(Prefix::IterableMap), 
             users: IterableMap::new(Prefix::IterableMap),
             next_campaign_id: 0,
             loan_requests : IterableMap::new(Prefix::IterableMap),
@@ -223,6 +211,8 @@ impl Contract {
         self.loans.iter().collect()
     }
 
+    // Campaigns
+
     pub fn create_campaign(&mut self, end_time: U64, title : String, description : String, images : String, amount_required : u128, campaign_code : String) {
         let creator = env::predecessor_account_id();
         let profile = self.users.get_mut(&creator).expect("User profile not found");
@@ -269,7 +259,7 @@ impl Contract {
         self.users.insert(account_id, profile);
     }
 
-    #[private] // Only callable by the contract owner/verifier account
+    #[private] 
     pub fn verify_kyc(&mut self, user_id: AccountId) {
         let profile = self.users.get_mut(&user_id).expect("User profile not found");
         
@@ -277,7 +267,7 @@ impl Contract {
         profile.kyc_verified = true;
     }
 
-    #[private] // Only callable by the contract owner
+    #[private] 
     pub fn remove_profile(&mut self, user_id: AccountId) {
         self.users.remove(&user_id);
     }
