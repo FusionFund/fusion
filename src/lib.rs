@@ -2,10 +2,10 @@
 use near_sdk::{env, log, near, require, AccountId, NearToken, PanicOnDefault, Promise};
 use near_sdk::json_types::U64;
 use near_sdk::borsh::{self, BorshSerialize, BorshDeserialize};
-use near_sdk::store::{LookupMap, IterableMap};
+use near_sdk::store::{LookupMap, IterableMap, Vector};
 use near_sdk::BorshStorageKey;
 
-
+mod dao;
 
 #[near]
 #[derive(BorshStorageKey)]
@@ -23,7 +23,7 @@ pub enum Prefix {
 #[near(contract_state)]
 #[derive(PanicOnDefault)]
 pub struct Contract {
-    // total_contributions: u128,
+    // total_contributions: u64,
     // contributions: Vec<Contribution>,
     // campaigns: Vec<Campaign>,
     campaigns : IterableMap<u64, Campaign>,
@@ -33,17 +33,22 @@ pub struct Contract {
     pub loans: IterableMap<u64, Loan>,
     pub next_loan_request_id: u64,
     pub next_loan_id: u64,
+    treasury: u64,
+    proposals: IterableMap<u64, dao::Proposal>,
+    trusted_members: Vector<AccountId>,
+    proposal_count: u64,
     // crowdfunding_end_time: U64,
     // project_creator: AccountId,
     // claimed: bool,
 }
 
 
+
 #[near(serializers = [json, borsh])]
 #[derive(Clone)]
 pub struct LoanRequest {
     pub borrower: AccountId,
-    pub amount: u128,
+    pub amount: u64,
     pub interest_rate: u8, // interest rate as a percentage
     pub duration: U64, // loan duration in seconds
     pub fulfilled: bool,
@@ -56,7 +61,7 @@ pub struct Loan {
     pub loan_id: u64,
     pub borrower: AccountId,
     pub lender: AccountId,
-    pub amount: u128,
+    pub amount: u64,
     pub interest_rate: u8,
     pub duration: U64,
     pub start_time: U64,
@@ -67,11 +72,11 @@ pub struct Loan {
 #[derive(Clone)]
 pub struct Campaign {
     pub creator: AccountId,
-    pub total_contributions: u128,
+    pub total_contributions: u64,
     pub contributions: Vec<Contribution>,
     pub crowdfunding_end_time: U64,
     pub claimed: bool,
-    pub amount_required : u128,
+    pub amount_required : u64,
     pub title : String,
     pub description : String,
     pub images : String,
@@ -93,7 +98,7 @@ pub struct UserProfile {
 #[derive(Clone)]
 pub struct Contribution {
     pub contributor: AccountId,
-    pub amount: u128,
+    pub amount: u64,
 }
 
 
@@ -112,13 +117,16 @@ impl Contract {
             loan_requests : IterableMap::new(Prefix::IterableMap),
             loans : IterableMap::new(Prefix::IterableMap),
             next_loan_id : 0,
-            next_loan_request_id : 0
-            
+            next_loan_request_id : 0,
+            treasury : 0,
+            proposals : IterableMap::new(Prefix::IterableMap),
+            trusted_members : Vector::new(Prefix::Vector),
+            proposal_count : 0
         }
     }
 
     #[payable]
-    pub fn create_loan_request(&mut self, amount: u128, interest_rate: u8, duration: U64) -> u64 {
+    pub fn create_loan_request(&mut self, amount: u64, interest_rate: u8, duration: U64) -> u64 {
         let borrower = env::predecessor_account_id();
         let loan_request_id = self.next_loan_request_id;
         
@@ -144,7 +152,7 @@ impl Contract {
         
         // Ensure loan request is open and not yet fulfilled
         require!(!loan_request.fulfilled, "Loan request is already fulfilled");
-        require!(env::attached_deposit() >= NearToken::from_yoctonear(loan_request.amount), "Insufficient deposit to fulfill loan request");
+        require!(env::attached_deposit() >= NearToken::from_yoctonear(loan_request.amount.into()), "Insufficient deposit to fulfill loan request");
 
         // Mark the loan request as fulfilled
         loan_request.fulfilled = true;
@@ -179,11 +187,11 @@ impl Contract {
         require!(!loan.repaid, "Loan has already been repaid");
 
         // Calculate repayment amount (principal + interest)
-        let interest_amount = loan.amount * loan.interest_rate as u128 / 100;
+        let interest_amount = loan.amount * loan.interest_rate as u64 / 100;
         let total_repayment = loan.amount + interest_amount;
 
         require!(
-            env::attached_deposit() >= NearToken::from_yoctonear(total_repayment),
+            env::attached_deposit() >= NearToken::from_yoctonear(total_repayment.into()),
             "Insufficient amount to repay loan"
         );
 
@@ -192,7 +200,7 @@ impl Contract {
         // self.loans.insert(loan_id, &loan);
 
         // Transfer funds to lender
-        Promise::new(loan.lender.clone()).transfer(NearToken::from_yoctonear(total_repayment));
+        Promise::new(loan.lender.clone()).transfer(NearToken::from_yoctonear(total_repayment.into()));
     }
 
     pub fn get_loan_request(&self, loan_request_id: u64) -> LoanRequest {
@@ -211,9 +219,17 @@ impl Contract {
         self.loans.iter().collect()
     }
 
+    pub fn do_i_exists(&self) -> bool {
+        self.users.contains_key(&env::predecessor_account_id())
+    }
+
+    pub fn user_exists(&self, account_id : AccountId) -> bool {
+        self.users.contains_key(&account_id)
+    }
+
     // Campaigns
 
-    pub fn create_campaign(&mut self, end_time: U64, title : String, description : String, images : String, amount_required : u128, campaign_code : String) {
+    pub fn create_campaign(&mut self, end_time: U64, title : String, description : String, images : String, amount_required : u64, campaign_code : String) {
         let creator = env::predecessor_account_id();
         let profile = self.users.get_mut(&creator).expect("User profile not found");
         if amount_required > 5000000 {
@@ -305,11 +321,11 @@ impl Contract {
         // Record the contribution
         campaign.contributions.push(Contribution {
             contributor,
-            amount: amount.as_near(),
+            amount: amount.as_near() as u64,
         });
 
         // Update the total contributions
-        campaign.total_contributions += amount.as_near();
+        campaign.total_contributions += amount.as_near() as u64;
 
         if !profile.contributions.contains(&campaign_id) {
             profile.contributions.push(campaign_id);
@@ -400,7 +416,7 @@ impl Contract {
     //     self.campaigns.insert(&campaign_id, &campaign);
     // }
 
-    pub fn modify_funding_goal(&mut self, campaign_id: u64, new_goal: u128) {
+    pub fn modify_funding_goal(&mut self, campaign_id: u64, new_goal: u64) {
         let campaign = self.campaigns.get_mut(&campaign_id).expect("Campaign does not exist");
     
         require!(env::predecessor_account_id() == campaign.creator, "Only the creator can modify the funding goal");
@@ -422,7 +438,7 @@ impl Contract {
         self.campaigns.remove(&campaign_id);
     }
 
-    pub fn get_user_total_contributions(&self, user_id: AccountId) -> u128 {
+    pub fn get_user_total_contributions(&self, user_id: AccountId) -> u64 {
         self.campaigns.iter()
             .flat_map(|(_, campaign)| campaign.contributions.iter())
             .filter(|contribution| contribution.contributor == user_id)
@@ -430,7 +446,7 @@ impl Contract {
             .sum()
     }
 
-    pub fn get_user_contribution_to_campaign(&self, campaign_id: u64, user_id: AccountId) -> u128 {
+    pub fn get_user_contribution_to_campaign(&self, campaign_id: u64, user_id: AccountId) -> u64 {
         let campaign = self.campaigns.get(&campaign_id).expect("Campaign does not exist");
         campaign.contributions.iter().filter(|c| c.contributor == user_id).map(|c| c.amount).sum()
     }
