@@ -1,8 +1,7 @@
 use crate::*;
 
-use near_sdk::{env, near_bindgen, AccountId, NearToken, PanicOnDefault};
-use near_sdk::store::{IterableMap, Vector};
-use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
+use near_sdk::{env, AccountId};
+
 
 
 // Struct to store a proposal

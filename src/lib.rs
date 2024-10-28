@@ -2,10 +2,11 @@
 use near_sdk::{env, log, near, require, AccountId, NearToken, PanicOnDefault, Promise};
 use near_sdk::json_types::U64;
 use near_sdk::borsh::{self, BorshSerialize, BorshDeserialize};
-use near_sdk::store::{LookupMap, IterableMap, Vector};
+use near_sdk::store::{LookupMap, IterableMap, IterableSet, Vector};
 use near_sdk::BorshStorageKey;
 
 mod dao;
+mod kyc;
 
 #[near]
 #[derive(BorshStorageKey)]
@@ -37,6 +38,8 @@ pub struct Contract {
     proposals: IterableMap<u64, dao::Proposal>,
     trusted_members: Vector<AccountId>,
     proposal_count: u64,
+    pub verified_users: IterableSet<AccountId>, // Set of verified users
+    pub banned_users: IterableSet<AccountId>, 
     // crowdfunding_end_time: U64,
     // project_creator: AccountId,
     // claimed: bool,
@@ -121,7 +124,9 @@ impl Contract {
             treasury : 0,
             proposals : IterableMap::new(Prefix::IterableMap),
             trusted_members : Vector::new(Prefix::Vector),
-            proposal_count : 0
+            proposal_count : 0,
+            verified_users : IterableSet::new(Prefix::IterableSet),
+            banned_users : IterableSet::new(Prefix::IterableSet)
         }
     }
 
