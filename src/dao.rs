@@ -90,7 +90,7 @@ impl Contract {
         self.proposals.get(&proposal_id).unwrap().clone()
     }
 
-    // 8. View All Proposals
+    // View All Proposals
     pub fn get_all_proposals(&self) -> Vec<&Proposal> {
         self.proposals.values().collect()
     }
