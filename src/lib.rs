@@ -40,6 +40,8 @@ pub struct Contract {
     proposal_count: u64,
     pub verified_users: IterableSet<AccountId>, // Set of verified users
     pub banned_users: IterableSet<AccountId>, 
+    pub withdrawal_logs: IterableMap<u64, Vec<WithdrawalLog>>, // Each campaign's logs
+    pub campaign_stats: IterableMap<u64, CampaignStats>,
     // crowdfunding_end_time: U64,
     // project_creator: AccountId,
     // claimed: bool,
@@ -69,6 +71,23 @@ pub struct Loan {
     pub duration: U64,
     pub start_time: U64,
     pub repaid: bool,
+}
+
+#[near(serializers = [json, borsh])]
+#[derive(Clone)]
+pub struct WithdrawalLog {
+    pub campaign_id: u64,
+    pub withdrawn_by: AccountId,
+    pub amount: u64,
+    pub timestamp: U64,
+}
+
+#[near(serializers = [json, borsh])]
+#[derive(Clone, Default)]
+pub struct CampaignStats {
+    pub total_funds: u64,
+    pub total_withdrawn: u64,
+    pub number_of_withdrawals: u64,
 }
 
 #[near(serializers = [json, borsh])]
@@ -126,7 +145,9 @@ impl Contract {
             trusted_members : Vector::new(Prefix::Vector),
             proposal_count : 0,
             verified_users : IterableSet::new(Prefix::IterableSet),
-            banned_users : IterableSet::new(Prefix::IterableSet)
+            banned_users : IterableSet::new(Prefix::IterableSet),
+            withdrawal_logs : IterableMap::new(Prefix::IterableMap),
+            campaign_stats : IterableMap::new(Prefix::IterableMap)
         }
     }
 
@@ -220,8 +241,8 @@ impl Contract {
         self.loans.get(&loan_id).unwrap().clone()
     }
 
-    pub fn get_all_loans(&self) -> Vec<(&u64, &Loan)> {
-        self.loans.iter().collect()
+    pub fn get_all_loans(&self, from_index: i32, limit: i32) -> Vec<(&u64, &Loan)> {
+        self.loans.iter().skip(from_index as usize).take(limit as usize).collect()
     }
 
     pub fn do_i_exists(&self) -> bool {
@@ -359,13 +380,66 @@ impl Contract {
         promise
     }
 
+    #[payable]
+    pub fn withdraw_funds(&mut self, campaign_id: u64, recipient: AccountId) {
+        let campaign = self.campaigns.get_mut(&campaign_id).expect("Campaign not found");
+
+        // This ensure sthat only the campaign creator can withdraw and the goal has been met.
+        require!(
+            env::predecessor_account_id() == campaign.creator,
+            "Only the campaign creator can withdraw"
+        );
+        require!(
+            campaign.total_contributions >= campaign.amount_required,
+            "Funding goal has not been met"
+        );
+
+        let amount_to_withdraw = campaign.total_contributions;
+        campaign.total_contributions = 0; //NearToken::from_yoctonear(0); // Reset amount after withdrawal
+
+        // Update campaign state
+        // self.campaigns.insert(campaign_id, campaign);
+
+        // Transfer funds to the recipient
+        Promise::new(recipient.clone()).transfer(NearToken::from_yoctonear(amount_to_withdraw.into()));
+
+
+        // let logs = self.withdrawal_logs.get(&campaign_id).unwrap();
+        
+        // logs.push(WithdrawalLog {
+        //     campaign_id,
+        //     withdrawn_by: env::predecessor_account_id(),
+        //     amount: amount_to_withdraw,
+        //     timestamp: U64::from(env::block_timestamp()),
+        // },);
+        // self.withdrawal_logs.insert(campaign_id, logs.clone());
+
+        // Update campaign stats
+        let stats = self.campaign_stats.get_mut(&campaign_id).unwrap();
+        stats.total_withdrawn += amount_to_withdraw;
+        stats.number_of_withdrawals += 1;
+        // self.campaign_stats.insert(campaign_id, stats.clone());
+    }
+
     pub fn get_campaign(&self, campaign_id: u64) -> Campaign {
         require!(self.campaigns.contains_key(&campaign_id), "Campaign does not exist");
         self.campaigns.get(&campaign_id).unwrap().clone() // Get the campaign
     }
 
-    pub fn get_all_campaigns(&self) -> Vec<&Campaign> {
+    pub fn get_all_campaigns_deprecated(&self) -> Vec<&Campaign> {
         self.campaigns.iter().map(|(_, campaign)| campaign).collect() // Collect all campaigns
+    }
+
+    pub fn get_all_the_campaign_deprecated(&self) -> Vec<(&u64, &Campaign)> {
+        self.campaigns.iter().collect()
+    }
+
+    pub fn get_all_campaigns(&self, from_index: i32, limit: i32) -> Vec<(&u64, &Campaign)> {
+        self.campaigns
+            .iter()
+            .skip(from_index as usize)
+            .take(limit as usize)
+            .collect()
     }
 
     pub fn get_campaign_status(&self, campaign_id: u64) -> String {
