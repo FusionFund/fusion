@@ -17,7 +17,8 @@ fusion-fund-mainnet_key.pem
 fusion-fund-testnet_key.pem
 
 virtual
-
+virtual/fusion-fund-testnet_key.pem
+virtual/fusion-fund-mainnet_key.pem
 # RustRover
 #  JetBrains specific template is maintained in a separate JetBrains.gitignore that can
 #  be found at https://github.com/github/gitignore/blob/main/Global/JetBrains.gitignore

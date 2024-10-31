@@ -1,7 +1,7 @@
 // use near_sdk::{log, near};
-use near_sdk::{env, log, near, require, AccountId, NearToken, PanicOnDefault, Promise};
+use near_sdk::{env, Gas, log, near, require, AccountId, NearToken, PanicOnDefault, Promise};
 use near_sdk::json_types::U64;
-use near_sdk::borsh::{self, BorshSerialize, BorshDeserialize};
+// use near_sdk::borsh::{self, BorshSerialize, BorshDeserialize};
 use near_sdk::store::{LookupMap, IterableMap, IterableSet, Vector};
 use near_sdk::BorshStorageKey;
 
@@ -20,13 +20,13 @@ pub enum Prefix {
     Nested(String),
 }
 
+//GAS constants to attach to calls
+const GAS_FOR_WITHDRAWALE: Gas = Gas::from_tgas(115);
+
 
 #[near(contract_state)]
 #[derive(PanicOnDefault)]
 pub struct Contract {
-    // total_contributions: u64,
-    // contributions: Vec<Contribution>,
-    // campaigns: Vec<Campaign>,
     campaigns : IterableMap<u64, Campaign>,
     users: IterableMap<AccountId, UserProfile>,
     next_campaign_id: u64,
@@ -40,11 +40,7 @@ pub struct Contract {
     proposal_count: u64,
     pub verified_users: IterableSet<AccountId>, // Set of verified users
     pub banned_users: IterableSet<AccountId>, 
-    pub withdrawal_logs: IterableMap<u64, Vec<WithdrawalLog>>, // Each campaign's logs
-    pub campaign_stats: IterableMap<u64, CampaignStats>,
-    // crowdfunding_end_time: U64,
-    // project_creator: AccountId,
-    // claimed: bool,
+    
 }
 
 
@@ -146,8 +142,8 @@ impl Contract {
             proposal_count : 0,
             verified_users : IterableSet::new(Prefix::IterableSet),
             banned_users : IterableSet::new(Prefix::IterableSet),
-            withdrawal_logs : IterableMap::new(Prefix::IterableMap),
-            campaign_stats : IterableMap::new(Prefix::IterableMap)
+            // withdrawal_logs : IterableMap::new(Prefix::IterableMap),
+            // campaign_stats : IterableMap::new(Prefix::IterableMap)
         }
     }
 
@@ -379,47 +375,10 @@ impl Contract {
         // self.campaigns.insert(campaign_id, campaign.clone()); // Update campaign state
         promise
     }
-
-    #[payable]
-    pub fn withdraw_funds(&mut self, campaign_id: u64, recipient: AccountId) {
-        let campaign = self.campaigns.get_mut(&campaign_id).expect("Campaign not found");
-
-        // This ensure sthat only the campaign creator can withdraw and the goal has been met.
-        require!(
-            env::predecessor_account_id() == campaign.creator,
-            "Only the campaign creator can withdraw"
-        );
-        require!(
-            campaign.total_contributions >= campaign.amount_required,
-            "Funding goal has not been met"
-        );
-
-        let amount_to_withdraw = campaign.total_contributions;
-        campaign.total_contributions = 0; //NearToken::from_yoctonear(0); // Reset amount after withdrawal
-
-        // Update campaign state
-        // self.campaigns.insert(campaign_id, campaign);
-
-        // Transfer funds to the recipient
-        Promise::new(recipient.clone()).transfer(NearToken::from_yoctonear(amount_to_withdraw.into()));
-
-
-        // let logs = self.withdrawal_logs.get(&campaign_id).unwrap();
-        
-        // logs.push(WithdrawalLog {
-        //     campaign_id,
-        //     withdrawn_by: env::predecessor_account_id(),
-        //     amount: amount_to_withdraw,
-        //     timestamp: U64::from(env::block_timestamp()),
-        // },);
-        // self.withdrawal_logs.insert(campaign_id, logs.clone());
-
-        // Update campaign stats
-        let stats = self.campaign_stats.get_mut(&campaign_id).unwrap();
-        stats.total_withdrawn += amount_to_withdraw;
-        stats.number_of_withdrawals += 1;
-        // self.campaign_stats.insert(campaign_id, stats.clone());
-    }
+    
+    pub fn transfer_token(&self, to : AccountId, amount : NearToken) {
+        Promise::new(to).transfer(amount);
+    } 
 
     pub fn get_campaign(&self, campaign_id: u64) -> Campaign {
         require!(self.campaigns.contains_key(&campaign_id), "Campaign does not exist");
